@@ -366,7 +366,7 @@ const App = () => {
         <Toolbar>
           <Nightlight style={{ marginRight: '10px' }} />
           <Typography variant="h6" style={{ flexGrow: 1 }}>
-            Dream Analyzer {isCaregiver && '(Caregiver)'}
+            Somnus{isCaregiver && '(Caregiver)'}
           </Typography>
           {isLoggedIn ? (
             <>
@@ -549,7 +549,7 @@ const App = () => {
           <StyledBox>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
               <Typography variant="h4" sx={{ fontWeight: 'bold', textShadow: '0 0 10px rgba(150, 150, 255, 0.5)' }}>
-                Your Dream History 📖
+                Your Dream History 
               </Typography>
               <StyledButton 
                 startIcon={<CloudDownload />}
