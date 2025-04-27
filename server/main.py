@@ -8,11 +8,12 @@ from functools import wraps
 import io
 from fpdf import FPDF
 from werkzeug.security import generate_password_hash, check_password_hash
+import enum
 
 app = Flask(__name__)
 CORS(app)
 
-app.config['SECRET_KEY'] = 'your_secret_key'  # Change this!
+app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dreams.db'
 db = SQLAlchemy(app)
 
@@ -21,9 +22,8 @@ SONAR_API_KEY = "your_sonar_api_key_here"
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String(100), unique=True)
-    password_hash = db.Column(db.String(200))
-    caregiver = db.Column(db.Boolean, default=False)
+    user_id = db.Column(db.String(100), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
 
 class Dream(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -41,6 +41,25 @@ class DreamMetadata(db.Model):
     places = db.Column(db.Text)
     emotions = db.Column(db.Text)
 
+class RelationshipStatus(enum.Enum):
+    PENDING = 'pending'
+    ACCEPTED = 'accepted'
+    REJECTED = 'rejected'
+
+class CaregiverRelationship(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    caregiver_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    patient_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.Enum(RelationshipStatus), default=RelationshipStatus.PENDING, nullable=False)
+    requested_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    responded_at = db.Column(db.DateTime, nullable=True)
+
+    caregiver = db.relationship('User', foreign_keys=[caregiver_user_id], backref='caring_for_relationships')
+    patient = db.relationship('User', foreign_keys=[patient_user_id], backref='caregivers_relationships')
+
+    db.UniqueConstraint('caregiver_user_id', 'patient_user_id', name='uq_caregiver_patient')
+
+
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -51,9 +70,16 @@ def token_required(f):
             return jsonify({'message': 'Token is missing!'}), 401
         try:
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
-            current_user = User.query.filter_by(user_id=data['user_id']).first()
-        except:
+            current_user = User.query.get(data['user_db_id'])
+            if not current_user:
+                 return jsonify({'message': 'User not found!'}), 401
+        except jwt.ExpiredSignatureError:
+            return jsonify({'message': 'Token has expired!'}), 401
+        except jwt.InvalidTokenError:
             return jsonify({'message': 'Token is invalid!'}), 401
+        except Exception as e:
+             print(f"Token validation error: {e}")
+             return jsonify({'message': 'Token validation failed!'}), 401
         return f(current_user, *args, **kwargs)
     return decorated
 
@@ -102,15 +128,17 @@ def generate_pdf(dreams):
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     data = request.get_json()
-    user_id = data.get('user_id')
+    user_id_str = data.get('user_id')
     password = data.get('password')
-    caregiver = data.get('caregiver', False)
 
-    if not user_id or not password:
+    if not user_id_str or not password:
         return jsonify({'error': 'Missing credentials'}), 400
 
+    if User.query.filter_by(user_id=user_id_str).first():
+        return jsonify({'error': 'User ID already exists'}), 409
+
     hashed_password = generate_password_hash(password)
-    new_user = User(user_id=user_id, password_hash=hashed_password, caregiver=caregiver)
+    new_user = User(user_id=user_id_str, password_hash=hashed_password)
     db.session.add(new_user)
     db.session.commit()
     return jsonify({'message': 'User registered successfully'}), 201
@@ -118,19 +146,39 @@ def register():
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     data = request.get_json()
-    user_id = data.get('user_id')
+    user_id_str = data.get('user_id')
     password = data.get('password')
 
-    user = User.query.filter_by(user_id=user_id).first()
+    user = User.query.filter_by(user_id=user_id_str).first()
     if not user or not check_password_hash(user.password_hash, password):
         return jsonify({'error': 'Invalid credentials'}), 401
 
+    cared_for_relationships = CaregiverRelationship.query.filter_by(
+        caregiver_user_id=user.id, status=RelationshipStatus.ACCEPTED
+    ).all()
+    cared_for_users = [{'id': rel.patient.id, 'user_id': rel.patient.user_id} for rel in cared_for_relationships]
+
+    pending_requests_to_user = CaregiverRelationship.query.filter_by(
+        patient_user_id=user.id, status=RelationshipStatus.PENDING
+    ).all()
+    pending_requests = [{'request_id': req.id, 'caregiver_user_id': req.caregiver.user_id} for req in pending_requests_to_user]
+
+
     token = jwt.encode(
-        {'user_id': user.user_id, 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=12)},
+        {
+            'user_db_id': user.id,
+            'user_id': user.user_id,
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=12)
+        },
         app.config['SECRET_KEY'],
         algorithm="HS256"
     )
-    return jsonify({'token': token}), 200
+    return jsonify({
+        'token': token,
+        'user_id': user.user_id,
+        'cared_for_users': cared_for_users,
+        'pending_requests': pending_requests
+     }), 200
 
 @app.route('/api/dream/analyze', methods=['POST'])
 @token_required
@@ -199,21 +247,141 @@ def export_pdf(current_user):
     pdf_file = generate_pdf(dreams)
     return send_file(pdf_file, as_attachment=True, download_name='dreams_report.pdf')
 
+
+@app.route('/api/caregiver/request', methods=['POST'])
+@token_required
+def request_caregiver_access(current_user):
+    data = request.get_json()
+    patient_user_id_str = data.get('patient_user_id')
+
+    if not patient_user_id_str:
+        return jsonify({'error': 'Patient User ID is required'}), 400
+
+    patient_user = User.query.filter_by(user_id=patient_user_id_str).first()
+
+    if not patient_user:
+        return jsonify({'error': 'Patient user not found'}), 404
+
+    if patient_user.id == current_user.id:
+        return jsonify({'error': 'Cannot request caregiver access for yourself'}), 400
+
+    existing_request = CaregiverRelationship.query.filter_by(
+        caregiver_user_id=current_user.id,
+        patient_user_id=patient_user.id
+    ).first()
+
+    if existing_request:
+        if existing_request.status == RelationshipStatus.PENDING:
+             return jsonify({'message': 'Request already pending'}), 409
+        elif existing_request.status == RelationshipStatus.ACCEPTED:
+             return jsonify({'message': 'Caregiver access already granted'}), 409
+        else:
+             return jsonify({'message': 'A previous request was rejected'}), 409
+
+
+    new_request = CaregiverRelationship(
+        caregiver_user_id=current_user.id,
+        patient_user_id=patient_user.id,
+        status=RelationshipStatus.PENDING
+    )
+    db.session.add(new_request)
+    db.session.commit()
+
+    return jsonify({'message': 'Caregiver request sent successfully'}), 201
+
+
+@app.route('/api/caregiver/requests/pending', methods=['GET'])
+@token_required
+def get_pending_requests(current_user):
+    pending_requests_to_user = CaregiverRelationship.query.filter_by(
+        patient_user_id=current_user.id,
+        status=RelationshipStatus.PENDING
+    ).join(User, CaregiverRelationship.caregiver_user_id == User.id)\
+     .add_columns(User.user_id.label('caregiver_user_id_str'), CaregiverRelationship.id.label('request_id'))\
+     .all()
+
+    output = [{'request_id': req.request_id, 'caregiver_user_id': req.caregiver_user_id_str} for req in pending_requests_to_user]
+    return jsonify(output), 200
+
+
+@app.route('/api/caregiver/requests/respond', methods=['POST'])
+@token_required
+def respond_to_request(current_user):
+    data = request.get_json()
+    request_id = data.get('request_id')
+    action = data.get('action')
+
+    if not request_id or action not in ['accept', 'reject']:
+        return jsonify({'error': 'Missing request_id or invalid action'}), 400
+
+    relationship_request = CaregiverRelationship.query.filter_by(
+        id=request_id,
+        patient_user_id=current_user.id,
+        status=RelationshipStatus.PENDING
+    ).first()
+
+    if not relationship_request:
+        return jsonify({'error': 'Request not found or already responded to'}), 404
+
+    if action == 'accept':
+        relationship_request.status = RelationshipStatus.ACCEPTED
+    else:
+        relationship_request.status = RelationshipStatus.REJECTED
+
+    relationship_request.responded_at = datetime.datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({'message': f'Request {action}ed successfully'}), 200
+
+
+@app.route('/api/caregiver/cared_for', methods=['GET'])
+@token_required
+def get_cared_for_users(current_user):
+    cared_for_relationships = CaregiverRelationship.query.filter_by(
+        caregiver_user_id=current_user.id, status=RelationshipStatus.ACCEPTED
+    ).join(User, CaregiverRelationship.patient_user_id == User.id)\
+     .add_columns(User.id.label('patient_db_id'), User.user_id.label('patient_user_id_str'))\
+     .all()
+
+    output = [{'id': rel.patient_db_id, 'user_id': rel.patient_user_id_str} for rel in cared_for_relationships]
+    return jsonify(output), 200
+
+
+
 @app.route('/api/caregiver/summary', methods=['GET'])
 @token_required
 def caregiver_summary(current_user):
-    if not current_user.caregiver:
-        return jsonify({'error': 'Unauthorized'}), 403
+    accepted_relationships = CaregiverRelationship.query.filter_by(
+        caregiver_user_id=current_user.id,
+        status=RelationshipStatus.ACCEPTED
+    ).all()
 
-    dreams = Dream.query.order_by(Dream.created_at.desc()).limit(10).all()
+    if not accepted_relationships:
+        return jsonify([]), 200
+
+    patient_ids = [rel.patient_user_id for rel in accepted_relationships]
+    patient_user_map = {user.id: user.user_id for user in User.query.filter(User.id.in_(patient_ids)).all()}
+
+
+    dreams = Dream.query.filter(Dream.user_id.in_(
+         [patient_user_map[pid] for pid in patient_ids if pid in patient_user_map]
+    )).order_by(Dream.created_at.desc()).limit(50).all()
+
+
     output = []
     for dream in dreams:
-        output.append({
-            'user_id': dream.user_id,
-            'dream_summary': dream.sonar_analysis,
-            'date': dream.created_at.strftime("%Y-%m-%d")
-        })
+         patient_internal_id = next((pid for pid, uid_str in patient_user_map.items() if uid_str == dream.user_id), None)
+         if patient_internal_id:
+             output.append({
+                 'patient_user_id': dream.user_id,
+                 'dream_summary': dream.sonar_analysis,
+                 'date': dream.created_at.strftime("%Y-%m-%d"),
+                 'memory_score': dream.memory_score,
+                 'anxiety_score': dream.anxiety_score
+             })
+
     return jsonify(output), 200
+
 
 if __name__ == '__main__':
     with app.app_context():

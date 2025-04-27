@@ -3,15 +3,15 @@ import axios from 'axios';
 import { 
   Container, Box, Typography, TextField, Button, Paper, CircularProgress, Grid, 
   Tabs, Tab, Card, CardContent, Chip, LinearProgress, AppBar, Toolbar, Avatar,
-  Dialog, DialogTitle, DialogContent, DialogActions, IconButton
+  Dialog, DialogTitle, DialogContent, DialogActions, IconButton, List, ListItem,
+  ListItemText, ListItemSecondaryAction, Divider, Alert
 } from '@mui/material';
 import { styled } from '@mui/system';
 import { 
   Nightlight, Psychology, Timeline, History, CloudDownload, Login, 
-  PersonAdd, ExitToApp, MenuBook
+  PersonAdd, ExitToApp, MenuBook, Settings, Notifications, CheckCircle, Cancel
 } from '@mui/icons-material';
 
-// Styled components with dream-themed aesthetics
 const DreamBackground = styled('div')({
   minHeight: '100vh',
   background: 'linear-gradient(135deg, #111133 0%, #2c2c54 100%)',
@@ -19,7 +19,7 @@ const DreamBackground = styled('div')({
   color: '#fff'
 });
 
-const StyledBox = styled(Box)({
+const StyledBox = styled(Box)(({
   backgroundColor: 'rgba(28, 28, 44, 0.8)',
   color: '#fff',
   borderRadius: '15px',
@@ -27,9 +27,9 @@ const StyledBox = styled(Box)({
   boxShadow: '0px 4px 20px rgba(90, 90, 255, 0.2)',
   backdropFilter: 'blur(10px)',
   border: '1px solid rgba(150, 150, 255, 0.2)',
-});
+}));
 
-const StyledButton = styled(Button)({
+const StyledButton = styled(Button)(({
   backgroundColor: '#7e57c2',
   color: '#fff',
   boxShadow: '0 4px 12px rgba(126, 87, 194, 0.3)',
@@ -37,9 +37,9 @@ const StyledButton = styled(Button)({
     backgroundColor: '#5e35b1',
   },
   transition: 'all 0.3s ease',
-});
+}));
 
-const DreamCard = styled(Card)({
+const DreamCard = styled(Card)(({
   backgroundColor: 'rgba(40, 40, 80, 0.9)',
   color: '#fff',
   boxShadow: '0px 6px 16px rgba(80, 64, 170, 0.3)',
@@ -50,30 +50,30 @@ const DreamCard = styled(Card)({
   '&:hover': {
     transform: 'translateY(-5px)',
   }
-});
+}));
 
-const EmotionChip = styled(Chip)({
+const EmotionChip = styled(Chip)(({
   margin: '4px',
   backgroundColor: 'rgba(126, 87, 194, 0.2)',
   color: '#bb86fc',
   border: '1px solid #bb86fc',
-});
+}));
 
-const PersonChip = styled(Chip)({
+const PersonChip = styled(Chip)(({
   margin: '4px',
   backgroundColor: 'rgba(3, 218, 198, 0.2)',
   color: '#03dac6',
   border: '1px solid #03dac6',
-});
+}));
 
-const PlaceChip = styled(Chip)({
+const PlaceChip = styled(Chip)(({
   margin: '4px',
   backgroundColor: 'rgba(255, 215, 64, 0.2)',
   color: '#ffd740',
   border: '1px solid #ffd740',
-});
+}));
 
-const StyledTextField = styled(TextField)({
+const StyledTextField = styled(TextField)(({
   '& .MuiOutlinedInput-root': {
     '& fieldset': {
       borderColor: 'rgba(150, 150, 255, 0.5)',
@@ -88,13 +88,14 @@ const StyledTextField = styled(TextField)({
   '& .MuiInputLabel-root': {
     color: 'rgba(255, 255, 255, 0.7)',
   },
-});
+}));
 
 const App = () => {
   const [dreamText, setDreamText] = useState('');
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [tabValue, setTabValue] = useState(0);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [token, setToken] = useState('');
@@ -105,25 +106,67 @@ const App = () => {
   const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
   const [isCaregiver, setIsCaregiver] = useState(false);
   const [summaryData, setSummaryData] = useState([]);
+  const [caredForUsers, setCaredForUsers] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [patientUserIdToRequest, setPatientUserIdToRequest] = useState('');
+
+  const settingsTabIndex = isCaregiver ? 3 : 2;
 
   useEffect(() => {
     const savedToken = localStorage.getItem('dreamToken');
-    if (savedToken) {
+    const savedUserId = localStorage.getItem('dreamUserId');
+    if (savedToken && savedUserId) {
       setToken(savedToken);
+      setUserId(savedUserId);
       setIsLoggedIn(true);
-      fetchDreamHistory(savedToken);
+      fetchUserProfile(savedToken);
+      fetchPendingRequests(savedToken);
     }
   }, []);
 
   const handleTabChange = (event, newValue) => {
+    console.log(`Tab changed. New value: ${newValue}, isLoggedIn: ${isLoggedIn}, isCaregiver: ${isCaregiver}, settingsTabIndex: ${settingsTabIndex}`);
     setTabValue(newValue);
+    setError('');
+    setSuccessMessage('');
     if (newValue === 1 && isLoggedIn) {
+      console.log('Fetching dream history...');
       fetchDreamHistory(token);
     }
     if (newValue === 2 && isLoggedIn && isCaregiver) {
+      console.log('Fetching caregiver summary...');
       fetchCaregiverSummary(token);
     }
+    if (newValue === settingsTabIndex && isLoggedIn) {
+      console.log('Fetching pending requests and user profile for settings tab...');
+      fetchPendingRequests(token);
+      fetchUserProfile(token);
+    }
   };
+
+  const fetchUserProfile = async (authToken) => {
+    setError('');
+    try {
+      const response = await axios.get('http://127.0.0.1:5000/api/caregiver/cared_for', {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      
+      const currentlyCaredFor = response.data || [];
+      setCaredForUsers(currentlyCaredFor);
+      setIsCaregiver(currentlyCaredFor.length > 0);
+
+      const loginData = JSON.parse(localStorage.getItem('dreamLoginData') || '{}');
+      loginData.cared_for_users = currentlyCaredFor;
+      localStorage.setItem('dreamLoginData', JSON.stringify(loginData));
+
+    } catch (error) {
+      console.error('Failed to fetch cared-for users', error);
+      setError('Could not load the list of users you care for.');
+      setCaredForUsers([]);
+      setIsCaregiver(false);
+    }
+  };
+
 
   const handleSubmit = async () => {
     if (!dreamText) {
@@ -155,46 +198,59 @@ const App = () => {
 
   const handleLogin = async () => {
     setError('');
+    setSuccessMessage('');
     try {
       const response = await axios.post('http://127.0.0.1:5000/api/auth/login', {
         user_id: userId,
         password: password
       });
       
-      setToken(response.data.token);
-      localStorage.setItem('dreamToken', response.data.token);
+      const { token: newToken, user_id: loggedInUserId, cared_for_users, pending_requests } = response.data;
+
+      setToken(newToken);
+      setUserId(loggedInUserId);
       setIsLoggedIn(true);
+      setCaredForUsers(cared_for_users || []);
+      setPendingRequests(pending_requests || []);
+      setIsCaregiver((cared_for_users || []).length > 0);
+
+      localStorage.setItem('dreamToken', newToken);
+      localStorage.setItem('dreamUserId', loggedInUserId);
+      localStorage.setItem('dreamLoginData', JSON.stringify({ cared_for_users, pending_requests }));
+
       setLoginDialogOpen(false);
-      
-      const user = await axios.get('http://127.0.0.1:5000/api/user/profile', {
-        headers: { Authorization: `Bearer ${response.data.token}` }
-      });
-      if (user.data.caregiver) {
-        setIsCaregiver(true);
-      }
-      
+      setPassword('');
+      setSuccessMessage('Login successful!');
+      fetchDreamHistory(newToken);
+
     } catch (error) {
       setError('Login failed. Check your credentials.');
+      console.error("Login error:", error.response?.data || error.message);
     }
   };
 
   const handleRegister = async () => {
     setError('');
+    setSuccessMessage('');
     try {
       await axios.post('http://127.0.0.1:5000/api/auth/register', {
         user_id: userId,
         password: password,
-        caregiver: false
       });
       setRegisterDialogOpen(false);
+      setPassword('');
+      setSuccessMessage('Registration successful! Please log in.');
       setLoginDialogOpen(true);
     } catch (error) {
-      setError('Registration failed. User ID might already be taken.');
+      setError(error.response?.data?.error || 'Registration failed. User ID might already be taken.');
+      console.error("Registration error:", error.response?.data || error.message);
     }
   };
 
   const handleLogout = () => {
     localStorage.removeItem('dreamToken');
+    localStorage.removeItem('dreamUserId');
+    localStorage.removeItem('dreamLoginData');
     setToken('');
     setIsLoggedIn(false);
     setUserId('');
@@ -202,6 +258,12 @@ const App = () => {
     setDreamHistory([]);
     setSummaryData([]);
     setIsCaregiver(false);
+    setCaredForUsers([]);
+    setPendingRequests([]);
+    setAnalysis(null);
+    setError('');
+    setSuccessMessage('');
+    setTabValue(0);
   };
 
   const fetchDreamHistory = async (authToken) => {
@@ -215,7 +277,7 @@ const App = () => {
     }
   };
 
-  const fetchCaregiverSummary = async (authToken) => {
+ const fetchCaregiverSummary = async (authToken) => {
     try {
       const response = await axios.get('http://127.0.0.1:5000/api/caregiver/summary', {
         headers: { Authorization: `Bearer ${authToken}` }
@@ -223,8 +285,60 @@ const App = () => {
       setSummaryData(response.data);
     } catch (error) {
       console.error('Failed to fetch caregiver summary', error);
+      setError('Could not load caregiver data.');
+      setSummaryData([]);
     }
   };
+
+  const fetchPendingRequests = async (authToken) => {
+    try {
+      const response = await axios.get('http://127.0.0.1:5000/api/caregiver/requests/pending', {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      setPendingRequests(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch pending requests', error);
+      setError('Could not load pending caregiver requests.');
+    }
+  };
+
+  const handleRequestAccess = async () => {
+    if (!patientUserIdToRequest) {
+      setError('Please enter the User ID of the person you wish to care for.');
+      return;
+    }
+    setError('');
+    setSuccessMessage('');
+    try {
+      await axios.post('http://127.0.0.1:5000/api/caregiver/request',
+        { patient_user_id: patientUserIdToRequest },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSuccessMessage(`Request sent to ${patientUserIdToRequest}.`);
+      setPatientUserIdToRequest('');
+    } catch (error) {
+      setError(error.response?.data?.error || error.response?.data?.message || 'Failed to send caregiver request.');
+      console.error("Request access error:", error.response?.data || error.message);
+    }
+  };
+
+  const handleRespondToRequest = async (requestId, action) => {
+    setError('');
+    setSuccessMessage('');
+    try {
+      await axios.post('http://127.0.0.1:5000/api/caregiver/requests/respond',
+        { request_id: requestId, action: action }, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSuccessMessage(`Request ${action}ed successfully.`);
+      fetchPendingRequests(token);
+      fetchUserProfile(token);
+    } catch (error) {
+      setError(error.response?.data?.error || 'Failed to respond to request.');
+      console.error("Respond request error:", error.response?.data || error.message);
+    }
+  };
+
 
   const exportPDF = async () => {
     try {
@@ -252,13 +366,14 @@ const App = () => {
         <Toolbar>
           <Nightlight style={{ marginRight: '10px' }} />
           <Typography variant="h6" style={{ flexGrow: 1 }}>
-            Dream Analyzer
+            Dream Analyzer {isCaregiver && '(Caregiver)'}
           </Typography>
           {isLoggedIn ? (
             <>
               <Avatar sx={{ bgcolor: '#7e57c2', marginRight: '10px' }}>
                 {userId.charAt(0).toUpperCase()}
               </Avatar>
+              <Typography sx={{ mr: 2 }}>{userId}</Typography>
               <Button color="inherit" onClick={handleLogout} startIcon={<ExitToApp />}>
                 Logout
               </Button>
@@ -277,10 +392,13 @@ const App = () => {
       </AppBar>
 
       <Container maxWidth="lg">
-        <Tabs 
-          value={tabValue} 
+        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+        {successMessage && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage('')}>{successMessage}</Alert>}
+
+        <Tabs
+          value={tabValue}
           onChange={handleTabChange}
-          variant="fullWidth" 
+          variant="fullWidth"
           textColor="inherit"
           TabIndicatorProps={{ style: { backgroundColor: '#bb86fc' } }}
           sx={{ mb: 4, background: 'rgba(28, 28, 44, 0.6)', borderRadius: '10px' }}
@@ -288,6 +406,7 @@ const App = () => {
           <Tab icon={<Psychology />} label="Analyze Dream" />
           <Tab icon={<History />} label="Dream History" />
           {isCaregiver && <Tab icon={<MenuBook />} label="Caregiver View" />}
+          {isLoggedIn && <Tab icon={<Settings />} label="Settings & Requests" />}
         </Tabs>
 
         {tabValue === 0 && (
@@ -558,12 +677,12 @@ const App = () => {
               Caregiver Dashboard
             </Typography>
             <Typography variant="body1" paragraph sx={{ opacity: 0.8, mb: 4 }}>
-              Monitor cognitive health patterns across users
+              Recent dream entries from users you care for.
             </Typography>
             
             {summaryData.length === 0 ? (
               <Box sx={{ textAlign: 'center', py: 5 }}>
-                <Typography variant="h6">No dream data available yet</Typography>
+                <Typography variant="h6">No recent dream data available for the users you care for.</Typography>
               </Box>
             ) : (
               <Grid container spacing={2}>
@@ -575,11 +694,23 @@ const App = () => {
                           {item.date}
                         </Typography>
                         <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-                          User: {item.user_id}
+                          Patient: {item.patient_user_id}
                         </Typography>
-                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                          {item.dream_summary}
+                        <Typography variant="body2" sx={{ opacity: 0.9, mb: 2, maxHeight: 100, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          Summary: {item.dream_summary}
                         </Typography>
+                         <Grid container spacing={1}>
+                           <Grid item xs={6}>
+                              <Typography variant="caption" color="#03dac6">Memory</Typography>
+                              <LinearProgress variant="determinate" value={item.memory_score * 100} sx={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(3, 218, 198, 0.2)', '& .MuiLinearProgress-bar': { backgroundColor: '#03dac6' } }} />
+                              <Typography variant="caption" align="right" display="block">{Math.round(item.memory_score * 100)}%</Typography>
+                           </Grid>
+                           <Grid item xs={6}>
+                              <Typography variant="caption" color="#cf6679">Anxiety</Typography>
+                              <LinearProgress variant="determinate" value={item.anxiety_score * 100} sx={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(207, 102, 121, 0.2)', '& .MuiLinearProgress-bar': { backgroundColor: '#cf6679' } }} />
+                              <Typography variant="caption" align="right" display="block">{Math.round(item.anxiety_score * 100)}%</Typography>
+                           </Grid>
+                         </Grid>
                       </CardContent>
                     </DreamCard>
                   </Grid>
@@ -588,9 +719,100 @@ const App = () => {
             )}
           </StyledBox>
         )}
+
+        {tabValue === settingsTabIndex && isLoggedIn && (
+          <>
+            {console.log('Rendering Settings Tab Content. isLoggedIn:', isLoggedIn, 'Pending:', pendingRequests.length, 'CaredFor:', caredForUsers.length)}
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <StyledBox>
+                  <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
+                    Request Caregiver Access
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.8, mb: 2 }}>
+                    Enter the User ID of the person you want to request access to monitor.
+                  </Typography>
+                  <StyledTextField
+                    fullWidth
+                    label="Patient User ID"
+                    variant="outlined"
+                    value={patientUserIdToRequest}
+                    onChange={(e) => setPatientUserIdToRequest(e.target.value)}
+                    sx={{ mb: 2, input: { color: '#fff' } }}
+                  />
+                  <StyledButton
+                    fullWidth
+                    onClick={handleRequestAccess}
+                    startIcon={<PersonAdd />}
+                  >
+                    Send Request
+                  </StyledButton>
+                </StyledBox>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                 <StyledBox>
+                   <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
+                     Pending Caregiver Requests <Notifications sx={{ verticalAlign: 'middle', ml: 1, color: pendingRequests.length > 0 ? '#ffd740' : 'inherit' }} />
+                   </Typography>
+                   <Typography variant="body2" sx={{ opacity: 0.8, mb: 2 }}>
+                    Review requests from users who want to monitor your dreams.
+                  </Typography>
+                  {pendingRequests.length === 0 ? (
+                    <Typography sx={{ textAlign: 'center', opacity: 0.7, mt: 3 }}>
+                      No pending requests.
+                    </Typography>
+                  ) : (
+                    <List dense sx={{ background: 'rgba(40, 40, 80, 0.5)', borderRadius: '8px' }}>
+                      {pendingRequests.map((req) => (
+                        <React.Fragment key={req.request_id}>
+                          <ListItem>
+                            <ListItemText
+                              primary={`Request from: ${req.caregiver_user_id}`}
+                              primaryTypographyProps={{ color: '#fff' }}
+                            />
+                            <ListItemSecondaryAction>
+                              <IconButton edge="end" aria-label="accept" sx={{ color: '#03dac6', mr: 0.5 }} onClick={() => handleRespondToRequest(req.request_id, 'accept')}>
+                                <CheckCircle />
+                              </IconButton>
+                              <IconButton edge="end" aria-label="reject" sx={{ color: '#cf6679' }} onClick={() => handleRespondToRequest(req.request_id, 'reject')}>
+                                <Cancel />
+                              </IconButton>
+                            </ListItemSecondaryAction>
+                          </ListItem>
+                          <Divider component="li" sx={{ borderColor: 'rgba(150, 150, 255, 0.2)' }} />
+                        </React.Fragment>
+                      ))}
+                    </List>
+                  )}
+                 </StyledBox>
+              </Grid>
+
+               <Grid item xs={12}>
+                  <StyledBox>
+                    <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
+                        Users You Care For
+                    </Typography>
+                    {caredForUsers.length === 0 ? (
+                        <Typography sx={{ opacity: 0.7 }}>You are not currently a caregiver for any users.</Typography>
+                    ) : (
+                        <List dense>
+                            {caredForUsers.map((user) => (
+                                <ListItem key={user.id}>
+                                    <ListItemText primary={user.user_id} primaryTypographyProps={{ color: '#fff' }} />
+                                </ListItem>
+                            ))}
+                        </List>
+                    )}
+                  </StyledBox>
+               </Grid>
+            </Grid>
+          </>
+        )}
+
       </Container>
 
-      <Dialog open={loginDialogOpen} onClose={() => setLoginDialogOpen(false)}>
+      <Dialog open={loginDialogOpen} onClose={() => { setLoginDialogOpen(false); setError(''); setPassword(''); }}>
         <DialogTitle>Login</DialogTitle>
         <DialogContent>
           <StyledTextField
@@ -602,7 +824,7 @@ const App = () => {
             variant="outlined"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
-            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }} // Keep label dark if needed
+            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }}
           />
           <StyledTextField
             margin="dense"
@@ -612,22 +834,17 @@ const App = () => {
             variant="outlined"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }} // Keep label dark if needed
+            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }}
           />
-          {error && <Typography color="error" align="center" sx={{ mt: 2 }}>{error}</Typography>}
+           {error && <Typography color="error" align="center" sx={{ mt: 2 }}>{error}</Typography>}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setLoginDialogOpen(false)} color="primary">
-            Cancel
-          </Button>
-          <StyledButton onClick={handleLogin}>
-            Login
-          </StyledButton>
+          <Button onClick={() => { setLoginDialogOpen(false); setError(''); setPassword(''); }}>Cancel</Button>
+          <StyledButton onClick={handleLogin}>Login</StyledButton>
         </DialogActions>
       </Dialog>
 
-      {/* Register Dialog */}
-      <Dialog open={registerDialogOpen} onClose={() => setRegisterDialogOpen(false)}>
+      <Dialog open={registerDialogOpen} onClose={() => { setRegisterDialogOpen(false); setError(''); setPassword(''); }}>
         <DialogTitle>Register</DialogTitle>
         <DialogContent>
           <StyledTextField
@@ -639,7 +856,7 @@ const App = () => {
             variant="outlined"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
-            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }} // Keep label dark if needed
+            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }}
           />
           <StyledTextField
             margin="dense"
@@ -649,17 +866,13 @@ const App = () => {
             variant="outlined"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }} // Keep label dark if needed
+            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }}
           />
           {error && <Typography color="error" align="center" sx={{ mt: 2 }}>{error}</Typography>}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRegisterDialogOpen(false)} color="primary">
-            Cancel
-          </Button>
-          <StyledButton onClick={handleRegister}>
-            Register
-          </StyledButton>
+          <Button onClick={() => { setRegisterDialogOpen(false); setError(''); setPassword(''); }}>Cancel</Button>
+          <StyledButton onClick={handleRegister}>Register</StyledButton>
         </DialogActions>
       </Dialog>
     </DreamBackground>
