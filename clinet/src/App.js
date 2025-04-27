@@ -88,9 +88,6 @@ const StyledTextField = styled(TextField)({
   '& .MuiInputLabel-root': {
     color: 'rgba(255, 255, 255, 0.7)',
   },
-  '& .MuiOutlinedInput-input': {
-    color: '#fff',
-  },
 });
 
 const App = () => {
@@ -311,7 +308,7 @@ const App = () => {
                   label="Enter Your Dream"
                   value={dreamText}
                   onChange={(e) => setDreamText(e.target.value)}
-                  sx={{ mb: 3 }}
+                  sx={{ mb: 3, input: { color: '#fff' } }}
                 />
                 {error && <Typography color="error" align="center" sx={{ mb: 2 }}>{error}</Typography>}
                 <StyledButton 
@@ -605,6 +602,7 @@ const App = () => {
             variant="outlined"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
+            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }} // Keep label dark if needed
           />
           <StyledTextField
             margin="dense"
@@ -614,6 +612,7 @@ const App = () => {
             variant="outlined"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }} // Keep label dark if needed
           />
           {error && <Typography color="error" align="center" sx={{ mt: 2 }}>{error}</Typography>}
         </DialogContent>
@@ -640,6 +639,7 @@ const App = () => {
             variant="outlined"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
+            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }} // Keep label dark if needed
           />
           <StyledTextField
             margin="dense"
@@ -649,6 +649,7 @@ const App = () => {
             variant="outlined"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }} // Keep label dark if needed
           />
           {error && <Typography color="error" align="center" sx={{ mt: 2 }}>{error}</Typography>}
         </DialogContent>
