@@ -4,11 +4,15 @@ from flask_cors import CORS
 import requests
 import jwt
 import datetime
+from datetime import timezone
 from functools import wraps
 import io
 from fpdf import FPDF
+import re
 from werkzeug.security import generate_password_hash, check_password_hash
 import enum
+import json
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -17,8 +21,9 @@ app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dreams.db'
 db = SQLAlchemy(app)
 
-SONAR_API_URL = "https://api.perplexity.ai/sonar"
-SONAR_API_KEY = "your_sonar_api_key_here"
+
+SONAR_API_URL = "https://api.perplexity.ai/chat/completions"
+SONAR_API_KEY = os.getenv('SONAR_API_KEY')
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -89,39 +94,103 @@ def call_sonar(prompt):
         "Content-Type": "application/json"
     }
     payload = {
-        "query": prompt,
-        "options": {"citations": True}
+        "model": "sonar",
+        "messages": [
+            {"role": "system", "content": "Provide a detailed cognitive health analysis of the dream, including key entities (people, places, objects) and associated emotions."},
+            {"role": "user", "content": prompt}
+        ]
     }
-    response = requests.post(SONAR_API_URL, json=payload, headers=headers)
-    if response.status_code == 200:
-        return response.json()
-    else:
+    try:
+        response = requests.post(SONAR_API_URL, json=payload, headers=headers, timeout=60)
+        if response.status_code == 200:
+            response_data = response.json()
+            if response_data and 'choices' in response_data and len(response_data['choices']) > 0:
+                message_content = response_data['choices'][0].get('message', {}).get('content')
+                if message_content:
+                    return message_content
+                else:
+                    print("Sonar response message content is empty.")
+                    return None
+            else:
+                print(f"Unexpected Sonar API response structure: {response_data}")
+                return None
+        else:
+            print(f"Sonar API call failed with status code: {response.status_code}")
+            try:
+                print(f"Sonar API response body: {response.text}")
+            except Exception as e:
+                print(f"Could not read Sonar API response body: {e}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"Error calling Sonar API: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        print(f"Error decoding Sonar API JSON response: {e}")
+        try:
+            print(f"Raw response text: {response.text}")
+        except:
+             print("Raw response text could not be read.")
         return None
 
 def extract_tags(text):
-    sonar_tags = call_sonar(f"Extract people, places, and emotions from this dream: {text}")
-    if sonar_tags:
+    sonar_tags_response = call_sonar(f"Extract people, places, and emotions from this dream: {text}")
+    if sonar_tags_response and isinstance(sonar_tags_response, dict):
+        people = sonar_tags_response.get('people', '') or ''
+        places = sonar_tags_response.get('places', '') or ''
+        emotions = sonar_tags_response.get('emotions', '') or ''
         return {
-            'people': sonar_tags.get('people', ''),
-            'places': sonar_tags.get('places', ''),
-            'emotions': sonar_tags.get('emotions', '')
+            'people': people,
+            'places': places,
+            'emotions': emotions
         }
     else:
+        print(f"Failed to extract tags or received unexpected response: {sonar_tags_response}")
         return {'people': '', 'places': '', 'emotions': ''}
 
 def generate_pdf(dreams):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, "Dream Analysis Report", 0, 1, 'C')
+    pdf.ln(10)
+
     for dream in dreams:
-        pdf.cell(200, 10, txt=f"Date: {dream.created_at.strftime('%Y-%m-%d')}", ln=True)
-        pdf.multi_cell(0, 10, f"Dream: {dream.dream_text}")
-        pdf.multi_cell(0, 10, f"Analysis: {dream.sonar_analysis}")
-        pdf.cell(0, 10, "-" * 100, ln=True)
-    
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(0, 10, f"Date: {dream.created_at.strftime('%Y-%m-%d')}", 0, 1)
+
+        pdf.set_font("Arial", 'I', 11)
+        dream_text_encoded = dream.dream_text.encode('latin-1', 'replace').decode('latin-1')
+        pdf.multi_cell(0, 5, f"Dream: {dream_text_encoded}")
+        pdf.ln(5)
+
+        pdf.set_font("Arial", '', 10)
+        analysis_text = str(dream.sonar_analysis) if dream.sonar_analysis else 'No analysis available.'
+        analysis_text = analysis_text.replace('**', '').replace('###', '').replace('* ', '  - ')
+        analysis_text = re.sub(r'\[\d+\]', '', analysis_text)
+        analysis_text = re.sub(r'\|.*\|', '', analysis_text)
+        analysis_text = re.sub(r'\n{2,}', '\n\n', analysis_text).strip()
+
+        analysis_encoded = analysis_text.encode('latin-1', 'replace').decode('latin-1')
+        pdf.set_font("Arial", 'B', 11)
+        pdf.cell(0, 10, "Analysis:", 0, 1)
+        pdf.set_font("Arial", '', 10)
+        pdf.multi_cell(0, 5, analysis_encoded)
+        pdf.ln(5)
+
+        pdf.set_font("Arial", '', 10)
+        pdf.cell(0, 8, f"Memory Score: {dream.memory_score*100:.0f}%", 0, 0)
+        pdf.cell(0, 8, f"Anxiety Score: {dream.anxiety_score*100:.0f}%", 0, 1, 'R')
+        pdf.ln(5)
+
+        pdf.set_draw_color(180, 180, 220)
+        pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y())
+        pdf.ln(10)
+
+    pdf_bytes = pdf.output(dest='S').encode('latin-1')
     pdf_output = io.BytesIO()
-    pdf.output(pdf_output)
+    pdf_output.write(pdf_bytes)
     pdf_output.seek(0)
     return pdf_output
 
@@ -168,7 +237,7 @@ def login():
         {
             'user_db_id': user.id,
             'user_id': user.user_id,
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=12)
+            'exp': datetime.datetime.now(timezone.utc) + datetime.timedelta(hours=12)
         },
         app.config['SECRET_KEY'],
         algorithm="HS256"
@@ -183,41 +252,101 @@ def login():
 @app.route('/api/dream/analyze', methods=['POST'])
 @token_required
 def analyze_dream(current_user):
-    data = request.get_json()
-    dream_text = data.get('dream_text')
+    try:
+        data = request.get_json()
+        dream_text = data.get('dream_text')
 
-    if not dream_text:
-        return jsonify({'error': 'Dream text is required'}), 400
+        if not dream_text:
+            return jsonify({'error': 'Dream text is required'}), 400
 
-    analysis = call_sonar(f"Analyze cognitive health impacts for dream: {dream_text}")
-    if not analysis:
-        return jsonify({'error': 'Sonar analysis failed'}), 500
+        print(f"Analyzing dream for user {current_user.user_id}: {dream_text[:50]}...")
 
-    tags = extract_tags(dream_text)
+        analysis_prompt = f"Analyze the cognitive health impacts of the following dream, identify key entities (people, places, objects), and associated emotions. Dream text: {dream_text}"
 
-    memory_score = min(1.0, len(dream_text) / 500)
-    anxiety_score = 1.0 - memory_score
+        raw_analysis_content = call_sonar(analysis_prompt)
 
-    new_dream = Dream(
-        user_id=current_user.user_id,
-        dream_text=dream_text,
-        sonar_analysis=str(analysis),
-        memory_score=memory_score,
-        anxiety_score=anxiety_score
-    )
-    db.session.add(new_dream)
-    db.session.commit()
+        print(f"Sonar analysis raw response: {raw_analysis_content}")
 
-    metadata = DreamMetadata(
-        dream_id=new_dream.id,
-        people=tags['people'],
-        places=tags['places'],
-        emotions=tags['emotions']
-    )
-    db.session.add(metadata)
-    db.session.commit()
+        if not raw_analysis_content:
+            print("Sonar analysis failed or returned empty content.")
+            return jsonify({'error': 'Analysis failed'}), 500
 
-    return jsonify({'analysis': analysis, 'tags': tags}), 200
+        analysis_text = raw_analysis_content
+        people_tag = ''
+        places_tag = ''
+        emotions_list = []
+
+        entity_section_match = re.search(r"(\*\*Key Entities\*\*|\*\*Scores\*\*)", raw_analysis_content, re.IGNORECASE)
+        if entity_section_match:
+            analysis_text = raw_analysis_content[:entity_section_match.start()].strip()
+        else:
+             table_match = re.search(r"\| Category\s*\|", raw_analysis_content)
+             if table_match:
+                 analysis_text = raw_analysis_content[:table_match.start()].strip()
+
+
+        table_rows = re.findall(r"\|\s*(People|Places|Objects)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|", raw_analysis_content, re.IGNORECASE)
+
+        for category, entities, emotions in table_rows:
+            entities = entities.strip()
+            emotions = emotions.strip()
+            if category.lower() == 'people':
+                people_tag = entities
+            elif category.lower() == 'places':
+                places_tag = entities
+            if emotions:
+                emotions_list.append(emotions)
+
+        emotions_tag = ', '.join(filter(None, emotions_list))
+
+        memory_score_val = None
+        anxiety_score_val = None
+        memory_match = re.search(r"Memory Score:\s*(\d+)/10", raw_analysis_content, re.IGNORECASE)
+        anxiety_match = re.search(r"Anxiety Score:\s*(\d+)/10", raw_analysis_content, re.IGNORECASE)
+
+        if memory_match:
+            memory_score_val = float(memory_match.group(1)) / 10.0
+        if anxiety_match:
+            anxiety_score_val = float(anxiety_match.group(1)) / 10.0
+
+        if memory_score_val is None:
+            memory_score_val = min(1.0, len(dream_text) / 500)
+        if anxiety_score_val is None:
+            anxiety_score_val = 1.0 - memory_score_val
+
+        final_tags = {'people': people_tag, 'places': places_tag, 'emotions': emotions_tag}
+        print(f"Extracted analysis: {analysis_text[:100]}...")
+        print(f"Extracted tags: {final_tags}")
+        print(f"Extracted scores: Memory={memory_score_val}, Anxiety={anxiety_score_val}")
+
+        new_dream = Dream(
+            user_id=current_user.user_id,
+            dream_text=dream_text,
+            sonar_analysis=analysis_text,
+            memory_score=memory_score_val,
+            anxiety_score=anxiety_score_val
+        )
+        db.session.add(new_dream)
+        db.session.flush()
+
+        metadata = DreamMetadata(
+            dream_id=new_dream.id,
+            people=people_tag,
+            places=places_tag,
+            emotions=emotions_tag
+        )
+        db.session.add(metadata)
+        db.session.commit()
+        print(f"Dream and metadata saved successfully for dream ID {new_dream.id}")
+
+        return jsonify({'analysis': {'analysis': analysis_text}, 'tags': final_tags, 'scores': {'memory': memory_score_val, 'anxiety': anxiety_score_val}}), 200
+
+    except Exception as e:
+        import traceback
+        print(f"Error in /api/dream/analyze: {e}")
+        print(traceback.format_exc())
+        db.session.rollback()
+        return jsonify({'error': 'An internal server error occurred during analysis parsing'}), 500
 
 @app.route('/api/dream/history', methods=['GET'])
 @token_required
@@ -243,10 +372,23 @@ def get_dream_history(current_user):
 @app.route('/api/dream/export/pdf', methods=['GET'])
 @token_required
 def export_pdf(current_user):
-    dreams = Dream.query.filter_by(user_id=current_user.user_id).order_by(Dream.created_at.desc()).all()
-    pdf_file = generate_pdf(dreams)
-    return send_file(pdf_file, as_attachment=True, download_name='dreams_report.pdf')
-
+    try:
+        dreams = Dream.query.filter_by(user_id=current_user.user_id).order_by(Dream.created_at.desc()).all()
+        if not dreams:
+            return jsonify({"message": "No dreams to export"}), 404
+        
+        pdf_file = generate_pdf(dreams)
+        return send_file(
+            pdf_file, 
+            as_attachment=True, 
+            download_name='dreams_report.pdf',
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        import traceback
+        print(f"Error in /api/dream/export/pdf: {e}")
+        print(traceback.format_exc())
+        return jsonify({'error': 'Failed to generate PDF report'}), 500
 
 @app.route('/api/caregiver/request', methods=['POST'])
 @token_required

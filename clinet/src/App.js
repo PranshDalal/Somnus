@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
 import { 
   Container, Box, Typography, TextField, Button, Paper, CircularProgress, Grid, 
   Tabs, Tab, Card, CardContent, Chip, LinearProgress, AppBar, Toolbar, Avatar,
@@ -75,6 +76,7 @@ const PlaceChip = styled(Chip)(({
 
 const StyledTextField = styled(TextField)(({
   '& .MuiOutlinedInput-root': {
+    color: '#fff',
     '& fieldset': {
       borderColor: 'rgba(150, 150, 255, 0.5)',
     },
@@ -84,9 +86,57 @@ const StyledTextField = styled(TextField)(({
     '&.Mui-focused fieldset': {
       borderColor: '#7e57c2',
     },
+    '& .MuiInputBase-inputMultiline': {
+      color: '#fff',
+    },
   },
   '& .MuiInputLabel-root': {
     color: 'rgba(255, 255, 255, 0.7)',
+  },
+  '& .MuiInputLabel-root.Mui-focused': {
+    color: '#bb86fc',
+  },
+}));
+
+const StyledMarkdownContainer = styled(Box)(({ theme }) => ({
+  '& h1, & h2, & h3, & h4, & h5, & h6': {
+    color: '#bb86fc',
+    marginTop: '1.5em',
+    marginBottom: '0.5em',
+    fontWeight: 'bold',
+  },
+  '& p': {
+    marginBottom: '1em',
+    opacity: 0.9,
+    lineHeight: 1.6,
+  },
+  '& strong': {
+    color: '#fff',
+    fontWeight: 600,
+  },
+  '& ul, & ol': {
+    marginBottom: '1em',
+    paddingLeft: '2em',
+  },
+  '& li': {
+    marginBottom: '0.5em',
+    opacity: 0.9,
+  },
+  '& table': {
+    width: '100%',
+    borderCollapse: 'collapse',
+    marginBottom: '1em',
+    backgroundColor: 'rgba(40, 40, 80, 0.5)',
+  },
+  '& th, & td': {
+    border: '1px solid rgba(150, 150, 255, 0.3)',
+    padding: '8px 12px',
+    textAlign: 'left',
+  },
+  '& th': {
+    backgroundColor: 'rgba(126, 87, 194, 0.3)',
+    color: '#bb86fc',
+    fontWeight: 'bold',
   },
 }));
 
@@ -411,7 +461,7 @@ const App = () => {
 
         {tabValue === 0 && (
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={analysis ? 12 : 6}> 
               <StyledBox>
                 <Typography variant="h4" gutterBottom align="center" sx={{ fontWeight: 'bold', textShadow: '0 0 10px rgba(150, 150, 255, 0.5)' }}>
                   Dream Analyzer 
@@ -427,7 +477,10 @@ const App = () => {
                   label="Enter Your Dream"
                   value={dreamText}
                   onChange={(e) => setDreamText(e.target.value)}
-                  sx={{ mb: 3, input: { color: '#fff' } }}
+                  InputProps={{
+                    style: { color: '#fff' } 
+                  }}
+                  sx={{ mb: 3 }}
                 />
                 {error && <Typography color="error" align="center" sx={{ mb: 2 }}>{error}</Typography>}
                 <StyledButton 
@@ -443,92 +496,75 @@ const App = () => {
               </StyledBox>
             </Grid>
 
-            <Grid item xs={12} md={6}>
-              {analysis ? (
+            {analysis && (
+              <Grid item xs={12} md={12}> 
                 <StyledBox>
                   <Typography variant="h5" gutterBottom sx={{ color: '#bb86fc', fontWeight: 'bold' }}>
                     Dream Analysis Results 
                   </Typography>
                   
-                  <Box sx={{ mb: 3 }}>
-                    <Typography variant="subtitle1" sx={{ color: '#03dac6' }}>
-                      Memory Impact Score
-                    </Typography>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={analysis.memory_score * 100} 
-                      sx={{ 
-                        height: 10, 
-                        borderRadius: 5, 
-                        backgroundColor: 'rgba(3, 218, 198, 0.2)',
-                        '& .MuiLinearProgress-bar': { backgroundColor: '#03dac6' }
-                      }} 
-                    />
-                    <Typography variant="body2" align="right" sx={{ mt: 0.5 }}>
-                      {Math.round(analysis.memory_score * 100)}%
-                    </Typography>
-                  </Box>
+                  <Grid container spacing={3} sx={{ mb: 3 }}>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle1" sx={{ color: '#03dac6', mb: 0.5 }}>
+                        Memory Impact Score
+                      </Typography>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={analysis.scores?.memory * 100 || 0} 
+                        sx={{ 
+                          height: 12,
+                          borderRadius: 6,
+                          backgroundColor: 'rgba(3, 218, 198, 0.15)',
+                          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)',
+                          '& .MuiLinearProgress-bar': { 
+                            backgroundColor: '#03dac6', 
+                            borderRadius: 6,
+                          }
+                        }} 
+                      />
+                      <Typography variant="body2" align="right" sx={{ mt: 0.5, fontWeight: 'bold' }}>
+                        {Math.round(analysis.scores?.memory * 100 || 0)}%
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle1" sx={{ color: '#cf6679', mb: 0.5 }}>
+                        Anxiety Level
+                      </Typography>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={analysis.scores?.anxiety * 100 || 0} 
+                        sx={{ 
+                          height: 12,
+                          borderRadius: 6,
+                          backgroundColor: 'rgba(207, 102, 121, 0.15)',
+                          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)',
+                          '& .MuiLinearProgress-bar': { 
+                            backgroundColor: '#cf6679', 
+                            borderRadius: 6,
+                          }
+                        }} 
+                      />
+                      <Typography variant="body2" align="right" sx={{ mt: 0.5, fontWeight: 'bold' }}>
+                        {Math.round(analysis.scores?.anxiety * 100 || 0)}%
+                      </Typography>
+                    </Grid>
+                  </Grid>
                   
-                  <Box sx={{ mb: 3 }}>
-                    <Typography variant="subtitle1" sx={{ color: '#cf6679' }}>
-                      Anxiety Level
-                    </Typography>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={analysis.anxiety_score * 100} 
-                      sx={{ 
-                        height: 10, 
-                        borderRadius: 5, 
-                        backgroundColor: 'rgba(207, 102, 121, 0.2)',
-                        '& .MuiLinearProgress-bar': { backgroundColor: '#cf6679' }
-                      }} 
-                    />
-                    <Typography variant="body2" align="right" sx={{ mt: 0.5 }}>
-                      {Math.round(analysis.anxiety_score * 100)}%
-                    </Typography>
-                  </Box>
-                  
-                  <Typography variant="h6" sx={{ color: '#bb86fc', mb: 1 }}>
+                  <Typography variant="h6" sx={{ color: '#bb86fc', mb: 1, mt: 3 }}>
                     Analysis:
                   </Typography>
-                  <Typography variant="body1" sx={{ mb: 3, opacity: 0.9 }}>
-                    {analysis.sonar_analysis}
-                  </Typography>
-                  
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle1" sx={{ color: '#03dac6', mb: 1 }}>
-                      People:
-                    </Typography>
-                    <Box>
-                      {analysis.tags?.people?.split(',').map((person, index) => (
-                        person.trim() && <PersonChip key={index} label={person.trim()} />
-                      ))}
-                    </Box>
-                  </Box>
-                  
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle1" sx={{ color: '#ffd740', mb: 1 }}>
-                      Places:
-                    </Typography>
-                    <Box>
-                      {analysis.tags?.places?.split(',').map((place, index) => (
-                        place.trim() && <PlaceChip key={index} label={place.trim()} />
-                      ))}
-                    </Box>
-                  </Box>
-                  
-                  <Box>
-                    <Typography variant="subtitle1" sx={{ color: '#bb86fc', mb: 1 }}>
-                      Emotions:
-                    </Typography>
-                    <Box>
-                      {analysis.tags?.emotions?.split(',').map((emotion, index) => (
-                        emotion.trim() && <EmotionChip key={index} label={emotion.trim()} />
-                      ))}
-                    </Box>
-                  </Box>
+                  <StyledMarkdownContainer>
+                    <ReactMarkdown>
+                      {analysis.analysis?.analysis || 'No analysis text available.'}
+                    </ReactMarkdown>
+                  </StyledMarkdownContainer>
+
                 </StyledBox>
-              ) : (
+              </Grid>
+            )}
+
+            {!analysis && (
+              <Grid item xs={12} md={6}>
                 <StyledBox sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Box sx={{ textAlign: 'center' }}>
                     <Nightlight sx={{ fontSize: 80, opacity: 0.7, mb: 2 }} />
@@ -540,8 +576,8 @@ const App = () => {
                     </Typography>
                   </Box>
                 </StyledBox>
-              )}
-            </Grid>
+              </Grid>
+            )}
           </Grid>
         )}
 
@@ -633,36 +669,11 @@ const App = () => {
                               backgroundColor: 'rgba(207, 102, 121, 0.2)',
                               '& .MuiLinearProgress-bar': { backgroundColor: '#cf6679' }
                             }} 
-                          />
+                          />  
                         </Grid>
                       </Grid>
+                      
 
-                      <Box sx={{ mt: 2, mb: 1 }}>
-                        <Typography variant="subtitle2">People:</Typography>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {dream.tags?.people?.split(',').map((person, idx) => 
-                            person.trim() && <PersonChip key={idx} size="small" label={person.trim()} />
-                          )}
-                        </Box>
-                      </Box>
-                      
-                      <Box sx={{ mb: 1 }}>
-                        <Typography variant="subtitle2">Places:</Typography>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {dream.tags?.places?.split(',').map((place, idx) => 
-                            place.trim() && <PlaceChip key={idx} size="small" label={place.trim()} />
-                          )}
-                        </Box>
-                      </Box>
-                      
-                      <Box>
-                        <Typography variant="subtitle2">Emotions:</Typography>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                          {dream.tags?.emotions?.split(',').map((emotion, idx) => 
-                            emotion.trim() && <EmotionChip key={idx} size="small" label={emotion.trim()} />
-                          )}
-                        </Box>
-                      </Box>
                     </CardContent>
                   </DreamCard>
                 ))}
