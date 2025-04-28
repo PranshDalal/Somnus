@@ -88,15 +88,21 @@ def token_required(f):
         return f(current_user, *args, **kwargs)
     return decorated
 
-def call_sonar(prompt):
+def call_sonar(prompt, is_gen_z_mode=False):
     headers = {
         "Authorization": f"Bearer {SONAR_API_KEY}",
         "Content-Type": "application/json"
     }
+    
+    if is_gen_z_mode:
+        system_content = "You are a helpful assistant who analyzes dreams. Respond in a Gen Z slang format, keeping it chill and maybe a bit ironic. Analyze the cognitive health impacts, key entities (people, places, objects), and associated emotions, but make it sound like you're explaining it to a friend using current internet slang. Keep it concise and vibey, like low-key helpful but also kinda funny. Bet."
+    else:
+        system_content = "Provide a detailed cognitive health analysis of the dream, including key entities (people, places, objects) and associated emotions."
+
     payload = {
         "model": "sonar",
         "messages": [
-            {"role": "system", "content": "Provide a detailed cognitive health analysis of the dream, including key entities (people, places, objects) and associated emotions."},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": prompt}
         ]
     }
@@ -255,67 +261,91 @@ def analyze_dream(current_user):
     try:
         data = request.get_json()
         dream_text = data.get('dream_text')
+        is_gen_z_mode = data.get('is_gen_z_mode', False)
 
         if not dream_text:
             return jsonify({'error': 'Dream text is required'}), 400
 
-        print(f"Analyzing dream for user {current_user.user_id}: {dream_text[:50]}...")
+        print(f"Analyzing dream for user {current_user.user_id} (Gen Z Mode: {is_gen_z_mode}): {dream_text[:50]}...")
 
         analysis_prompt = f"Analyze the cognitive health impacts of the following dream, identify key entities (people, places, objects), and associated emotions. Dream text: {dream_text}"
 
-        raw_analysis_content = call_sonar(analysis_prompt)
+        raw_analysis_content = call_sonar(analysis_prompt, is_gen_z_mode=is_gen_z_mode)
 
-        print(f"Sonar analysis raw response: {raw_analysis_content}")
+        print(f"Sonar analysis raw response (Gen Z Mode: {is_gen_z_mode}): {raw_analysis_content}")
 
         if not raw_analysis_content:
             print("Sonar analysis failed or returned empty content.")
             return jsonify({'error': 'Analysis failed'}), 500
+
 
         analysis_text = raw_analysis_content
         people_tag = ''
         places_tag = ''
         emotions_list = []
 
-        entity_section_match = re.search(r"(\*\*Key Entities\*\*|\*\*Scores\*\*)", raw_analysis_content, re.IGNORECASE)
-        if entity_section_match:
-            analysis_text = raw_analysis_content[:entity_section_match.start()].strip()
-        else:
-             table_match = re.search(r"\| Category\s*\|", raw_analysis_content)
-             if table_match:
-                 analysis_text = raw_analysis_content[:table_match.start()].strip()
+        try:
+            entity_section_match = re.search(r"(\*\*Key Entities\*\*|\*\*Scores\*\*|Key Entities:|Scores:|\| Category\s*\|)", raw_analysis_content, re.IGNORECASE)
+            if entity_section_match:
+                analysis_text = raw_analysis_content[:entity_section_match.start()].strip()
+            elif re.search(r"^(?:People|Places|Emotions|Scores|Memory|Anxiety):", raw_analysis_content, re.MULTILINE | re.IGNORECASE):
+                 first_marker_match = re.search(r"^(?:People|Places|Emotions|Scores|Memory|Anxiety):", raw_analysis_content, re.MULTILINE | re.IGNORECASE)
+                 if first_marker_match:
+                     analysis_text = raw_analysis_content[:first_marker_match.start()].strip()
 
 
-        table_rows = re.findall(r"\|\s*(People|Places|Objects)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|", raw_analysis_content, re.IGNORECASE)
+            table_rows = re.findall(r"\|\s*(People|Places|Objects)\s*\|\s*(.*?)\s*\|(?:.*?\|)?", raw_analysis_content, re.IGNORECASE | re.DOTALL)
+            if table_rows:
+                for category, entities in table_rows:
+                    entities = entities.strip()
+                    if category.lower() == 'people': people_tag = entities
+                    elif category.lower() == 'places': places_tag = entities
+            else:
+                people_match = re.search(r"^(?:People|Persons|Characters):\s*(.*?)$", raw_analysis_content, re.MULTILINE | re.IGNORECASE)
+                if people_match: people_tag = people_match.group(1).strip()
 
-        for category, entities, emotions in table_rows:
-            entities = entities.strip()
-            emotions = emotions.strip()
-            if category.lower() == 'people':
-                people_tag = entities
-            elif category.lower() == 'places':
-                places_tag = entities
-            if emotions:
-                emotions_list.append(emotions)
+                places_match = re.search(r"^(?:Places|Locations|Settings):\s*(.*?)$", raw_analysis_content, re.MULTILINE | re.IGNORECASE)
+                if places_match: places_tag = places_match.group(1).strip()
 
-        emotions_tag = ', '.join(filter(None, emotions_list))
+            emotions_match = re.search(r"^(?:Emotions|Feelings|Vibes):\s*(.*?)$", raw_analysis_content, re.MULTILINE | re.IGNORECASE)
+            if emotions_match:
+                emotions_list = [e.strip() for e in re.split(r',|\band\b', emotions_match.group(1)) if e.strip()]
 
-        memory_score_val = None
-        anxiety_score_val = None
-        memory_match = re.search(r"Memory Score:\s*(\d+)/10", raw_analysis_content, re.IGNORECASE)
-        anxiety_match = re.search(r"Anxiety Score:\s*(\d+)/10", raw_analysis_content, re.IGNORECASE)
+            emotions_tag = ', '.join(filter(None, emotions_list))
 
-        if memory_match:
-            memory_score_val = float(memory_match.group(1)) / 10.0
-        if anxiety_match:
-            anxiety_score_val = float(anxiety_match.group(1)) / 10.0
+            memory_score_val = None
+            anxiety_score_val = None
+            memory_match = re.search(r"(?:Memory Score|Memory vibe|Recall level|Remembering):\s*(\d+)\s*/\s*10", raw_analysis_content, re.IGNORECASE)
+            anxiety_match = re.search(r"(?:Anxiety Score|Stress level|Vibe check \(anxiety\)|Worry meter):\s*(\d+)\s*/\s*10", raw_analysis_content, re.IGNORECASE)
+            if memory_match: memory_score_val = float(memory_match.group(1)) / 10.0
+            if anxiety_match: anxiety_score_val = float(anxiety_match.group(1)) / 10.0
+
+            if memory_score_val is None:
+                memory_match_perc = re.search(r"(?:Memory Score|Memory vibe|Recall level|Remembering):\s*(\d+)%", raw_analysis_content, re.IGNORECASE)
+                if memory_match_perc: memory_score_val = float(memory_match_perc.group(1)) / 100.0
+            if anxiety_score_val is None:
+                anxiety_match_perc = re.search(r"(?:Anxiety Score|Stress level|Vibe check \(anxiety\)|Worry meter):\s*(\d+)%", raw_analysis_content, re.IGNORECASE)
+                if anxiety_match_perc: anxiety_score_val = float(anxiety_match_perc.group(1)) / 100.0
+
+        except Exception as parse_error:
+            print(f"Could not fully parse response structure: {parse_error}. Using raw analysis and default scores.")
+            analysis_text = raw_analysis_content
+            memory_score_val = None
+            anxiety_score_val = None
+            people_tag = ''
+            places_tag = ''
+            emotions_tag = ''
+
 
         if memory_score_val is None:
             memory_score_val = min(1.0, len(dream_text) / 500)
+            print("Falling back to default memory score calculation.")
         if anxiety_score_val is None:
             anxiety_score_val = 1.0 - memory_score_val
+            print("Falling back to default anxiety score calculation.")
 
         final_tags = {'people': people_tag, 'places': places_tag, 'emotions': emotions_tag}
-        print(f"Extracted analysis: {analysis_text[:100]}...")
+        print(f"Extracted analysis (Gen Z Mode: {is_gen_z_mode}): {analysis_text[:100]}...")
         print(f"Extracted tags: {final_tags}")
         print(f"Extracted scores: Memory={memory_score_val}, Anxiety={anxiety_score_val}")
 
@@ -346,7 +376,7 @@ def analyze_dream(current_user):
         print(f"Error in /api/dream/analyze: {e}")
         print(traceback.format_exc())
         db.session.rollback()
-        return jsonify({'error': 'An internal server error occurred during analysis parsing'}), 500
+        return jsonify({'error': 'An internal server error occurred during analysis processing'}), 500
 
 @app.route('/api/dream/history', methods=['GET'])
 @token_required

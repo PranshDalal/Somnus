@@ -5,7 +5,7 @@ import {
   Container, Box, Typography, TextField, Button, Paper, CircularProgress, Grid, 
   Tabs, Tab, Card, CardContent, Chip, LinearProgress, AppBar, Toolbar, Avatar,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, List, ListItem,
-  ListItemText, ListItemSecondaryAction, Divider, Alert
+  ListItemText, ListItemSecondaryAction, Divider, Alert, Switch, FormControlLabel
 } from '@mui/material';
 import { styled } from '@mui/system';
 import { 
@@ -20,7 +20,7 @@ const DreamBackground = styled('div')({
   color: '#fff'
 });
 
-const StyledBox = styled(Box)(({
+const StyledBox = styled(Box)({
   backgroundColor: 'rgba(28, 28, 44, 0.8)',
   color: '#fff',
   borderRadius: '15px',
@@ -28,9 +28,9 @@ const StyledBox = styled(Box)(({
   boxShadow: '0px 4px 20px rgba(90, 90, 255, 0.2)',
   backdropFilter: 'blur(10px)',
   border: '1px solid rgba(150, 150, 255, 0.2)',
-}));
+});
 
-const StyledButton = styled(Button)(({
+const StyledButton = styled(Button)({
   backgroundColor: '#7e57c2',
   color: '#fff',
   boxShadow: '0 4px 12px rgba(126, 87, 194, 0.3)',
@@ -38,9 +38,9 @@ const StyledButton = styled(Button)(({
     backgroundColor: '#5e35b1',
   },
   transition: 'all 0.3s ease',
-}));
+});
 
-const DreamCard = styled(Card)(({
+const DreamCard = styled(Card)({
   backgroundColor: 'rgba(40, 40, 80, 0.9)',
   color: '#fff',
   boxShadow: '0px 6px 16px rgba(80, 64, 170, 0.3)',
@@ -51,30 +51,30 @@ const DreamCard = styled(Card)(({
   '&:hover': {
     transform: 'translateY(-5px)',
   }
-}));
+});
 
-const EmotionChip = styled(Chip)(({
+const EmotionChip = styled(Chip)({
   margin: '4px',
   backgroundColor: 'rgba(126, 87, 194, 0.2)',
   color: '#bb86fc',
   border: '1px solid #bb86fc',
-}));
+});
 
-const PersonChip = styled(Chip)(({
+const PersonChip = styled(Chip)({
   margin: '4px',
   backgroundColor: 'rgba(3, 218, 198, 0.2)',
   color: '#03dac6',
   border: '1px solid #03dac6',
-}));
+});
 
-const PlaceChip = styled(Chip)(({
+const PlaceChip = styled(Chip)({
   margin: '4px',
   backgroundColor: 'rgba(255, 215, 64, 0.2)',
   color: '#ffd740',
   border: '1px solid #ffd740',
-}));
+});
 
-const StyledTextField = styled(TextField)(({
+const StyledTextField = styled(TextField)({
   '& .MuiOutlinedInput-root': {
     color: '#fff',
     '& fieldset': {
@@ -96,7 +96,7 @@ const StyledTextField = styled(TextField)(({
   '& .MuiInputLabel-root.Mui-focused': {
     color: '#bb86fc',
   },
-}));
+});
 
 const StyledMarkdownContainer = styled(Box)(({ theme }) => ({
   '& h1, & h2, & h3, & h4, & h5, & h6': {
@@ -159,6 +159,7 @@ const App = () => {
   const [caredForUsers, setCaredForUsers] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [patientUserIdToRequest, setPatientUserIdToRequest] = useState('');
+  const [isGenZMode, setIsGenZMode] = useState(false);
 
   const settingsTabIndex = isCaregiver ? 3 : 2;
 
@@ -234,7 +235,10 @@ const App = () => {
     
     try {
       const response = await axios.post('http://127.0.0.1:5000/api/dream/analyze', 
-        { dream_text: dreamText }, 
+        { 
+          dream_text: dreamText,
+          is_gen_z_mode: isGenZMode
+        }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setAnalysis(response.data);
@@ -481,6 +485,27 @@ const App = () => {
                     style: { color: '#fff' } 
                   }}
                   sx={{ mb: 3 }}
+                />
+                
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={isGenZMode}
+                      onChange={(e) => setIsGenZMode(e.target.checked)}
+                      name="genZMode"
+                      color="secondary" 
+                      sx={{
+                        '& .MuiSwitch-switchBase.Mui-checked': {
+                          color: '#bb86fc',
+                        },
+                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                          backgroundColor: '#bb86fc',
+                        },
+                      }}
+                    />
+                  }
+                  label="Gen Z Mode"
+                  sx={{ mb: 2, display: 'block', textAlign: 'center', color: '#fff' }} 
                 />
                 {error && <Typography color="error" align="center" sx={{ mb: 2 }}>{error}</Typography>}
                 <StyledButton 
