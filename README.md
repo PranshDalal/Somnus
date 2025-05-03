@@ -44,7 +44,7 @@ Somnus is a web application designed to analyze dreams and provide insights into
  - Python 3.8+
 
 ### Frontend setup
-1. Navigate to `client` directory
+1. Navigate to `clinet` directory
 2. Install dependencies
 3. Start the development server
 
