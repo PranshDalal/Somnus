@@ -113,6 +113,7 @@ def call_sonar(prompt, is_gen_z_mode=False):
             if response_data and 'choices' in response_data and len(response_data['choices']) > 0:
                 message_content = response_data['choices'][0].get('message', {}).get('content')
                 if message_content:
+                    message_content = re.sub(r'\[\d+\]', '', message_content)
                     return message_content
                 else:
                     print("Sonar response message content is empty.")
@@ -267,8 +268,7 @@ def analyze_dream(current_user):
             return jsonify({'error': 'Dream text is required'}), 400
 
         print(f"Analyzing dream for user {current_user.user_id} (Gen Z Mode: {is_gen_z_mode}): {dream_text[:50]}...")
-
-        analysis_prompt = f"Analyze the cognitive health impacts of the following dream, identify key entities (people, places, objects), and associated emotions. Dream text: {dream_text}"
+        analysis_prompt = f"Analyze the following dream with a focus on potential indicators of mental well-being, cognitive function, and emotional state. Assess the dream's themes, sentiment, and any elements that might relate to memory recall or anxiety levels. Provide a thoughtful analysis of these aspects. Also, provide a numerical 'Memory Score' and an 'Anxiety Score' on a scale of 0 to 10, reflecting your assessment based *only* on the dream's content. Dream text: {dream_text}"
 
         raw_analysis_content = call_sonar(analysis_prompt, is_gen_z_mode=is_gen_z_mode)
 
@@ -315,17 +315,27 @@ def analyze_dream(current_user):
 
             memory_score_val = None
             anxiety_score_val = None
-            memory_match = re.search(r"(?:Memory Score|Memory vibe|Recall level|Remembering):\s*(\d+)\s*/\s*10", raw_analysis_content, re.IGNORECASE)
-            anxiety_match = re.search(r"(?:Anxiety Score|Stress level|Vibe check \(anxiety\)|Worry meter):\s*(\d+)\s*/\s*10", raw_analysis_content, re.IGNORECASE)
-            if memory_match: memory_score_val = float(memory_match.group(1)) / 10.0
-            if anxiety_match: anxiety_score_val = float(anxiety_match.group(1)) / 10.0
-
-            if memory_score_val is None:
-                memory_match_perc = re.search(r"(?:Memory Score|Memory vibe|Recall level|Remembering):\s*(\d+)%", raw_analysis_content, re.IGNORECASE)
-                if memory_match_perc: memory_score_val = float(memory_match_perc.group(1)) / 100.0
-            if anxiety_score_val is None:
-                anxiety_match_perc = re.search(r"(?:Anxiety Score|Stress level|Vibe check \(anxiety\)|Worry meter):\s*(\d+)%", raw_analysis_content, re.IGNORECASE)
-                if anxiety_match_perc: anxiety_score_val = float(anxiety_match_perc.group(1)) / 100.0
+            
+            memory_match = re.search(r"Memory Score:\s*(\d+)/10", raw_analysis_content, re.IGNORECASE)
+            anxiety_match = re.search(r"Anxiety Score:\s*(\d+)/10", raw_analysis_content, re.IGNORECASE)
+            
+            if not memory_match:
+                memory_match = re.search(r"(?:Memory Score|Memory):\s*(\d+)[^\d]*?(?:/|\s*out of\s*)10", raw_analysis_content, re.IGNORECASE)
+            if not anxiety_match:
+                anxiety_match = re.search(r"(?:Anxiety Score|Anxiety):\s*(\d+)[^\d]*?(?:/|\s*out of\s*)10", raw_analysis_content, re.IGNORECASE)
+            
+            if not memory_match:
+                memory_match = re.search(r"Memory[^:]*?:\s*.*?(\d+).*?(?:/10|out of 10)", raw_analysis_content, re.IGNORECASE)
+            if not anxiety_match:
+                anxiety_match = re.search(r"Anxiety[^:]*?:\s*.*?(\d+).*?(?:/10|out of 10)", raw_analysis_content, re.IGNORECASE)
+            
+            if memory_match: 
+                memory_score_val = float(memory_match.group(1)) / 10.0
+                print(f"Found memory score: {memory_match.group(1)}/10 → {memory_score_val}")
+            
+            if anxiety_match: 
+                anxiety_score_val = float(anxiety_match.group(1)) / 10.0
+                print(f"Found anxiety score: {anxiety_match.group(1)}/10 → {anxiety_score_val}")
 
         except Exception as parse_error:
             print(f"Could not fully parse response structure: {parse_error}. Using raw analysis and default scores.")
@@ -398,6 +408,46 @@ def get_dream_history(current_user):
             }
         })
     return jsonify(output), 200
+
+@app.route('/api/patient_dreams/summary', methods=['POST'])
+@token_required
+def get_patient_dreams_summary(current_user):
+    data = request.get_json()
+    patient_user_id_str = data.get('patient_user_id')
+
+    print(f"Requesting summary for patient user ID: {patient_user_id_str}")
+
+    if not patient_user_id_str:
+        return jsonify({'error': 'Patient User ID is required'}), 400
+
+    patient_user = User.query.filter_by(user_id=patient_user_id_str).first()
+
+    if not patient_user:
+        return jsonify({'error': 'Patient user not found'}), 404
+
+    if patient_user.id == current_user.id:
+        return jsonify({'error': 'Cannot access your own dreams'}), 400
+
+    dreams = Dream.query.filter_by(user_id=patient_user.user_id).order_by(Dream.created_at.desc()).all()
+    output = []
+    for dream in dreams:
+        metadata = DreamMetadata.query.filter_by(dream_id=dream.id).first()
+        output.append({
+            'dream_text': dream.dream_text,
+            'sonar_analysis': dream.sonar_analysis,
+            'created_at': dream.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            'memory_score': dream.memory_score,
+            'anxiety_score': dream.anxiety_score,
+        })
+
+    output = output[:10] 
+
+    patterns = call_sonar(f"Analyze this collection of dreams from a single patient as if you were creating a clinical summary. Provide a cohesive overview of potential cognitive and mental health patterns across all dreams. Focus on recurring themes, emotional states, memory patterns, and anxiety indicators. Don't analyze each dream separately - instead, synthesize the information into a unified patient assessment that highlights significant patterns and trends. Include sections on: 1) Overall Cognitive Health Assessment, 2) Key Recurring Themes or Symbols, 3) Emotional Pattern Analysis, 4) Memory Function Indications, and 5) Clinical Recommendations. Dreams data: {json.dumps(output)}")
+
+    if not patterns:
+        return jsonify({'error': 'Failed to analyze patterns'}), 500
+
+    return jsonify({'patterns': patterns}), 200
 
 @app.route('/api/dream/export/pdf', methods=['GET'])
 @token_required

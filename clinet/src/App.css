@@ -36,3 +36,46 @@
     transform: rotate(360deg);
   }
 }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+#root {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+.App {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+.App-header {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+.App-link {
+  color: #61dafb;
+}
+.App-title {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+.App-description {
+  font-size: 1.2rem;
+  margin-bottom: 2rem;
+}
+

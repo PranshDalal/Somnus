@@ -10,17 +10,35 @@ import {
 import { styled } from '@mui/system';
 import { 
   Nightlight, Psychology, Timeline, History, CloudDownload, Login, 
-  PersonAdd, ExitToApp, MenuBook, Settings, Notifications, CheckCircle, Cancel
-} from '@mui/icons-material';
+  PersonAdd, ExitToApp, MenuBook, Settings, Notifications, CheckCircle, Cancel,
+  ArrowBack 
+} from '@mui/icons-material'; 
+import {
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend
+} from 'recharts';
 
 const DreamBackground = styled('div')({
-  minHeight: '100vh',
+  position: 'relative',
+  top: 0,
+  left: 0,
+  width: '100%',
+  minHeight: '100vh', 
+  flexGrow: 1,
+  backgroundSize: 'cover',
   background: 'linear-gradient(135deg, #111133 0%, #2c2c54 100%)',
-  padding: '20px 0',
-  color: '#fff'
+  padding: 0,
+  margin: 0,
+  color: '#fff',
+  fontFamily: 'Roboto, sans-serif',
+  backdropFilter: 'blur(10px)',
+  display: 'flex',
+  flexDirection: 'column',
+  overflowY: 'auto', 
 });
 
-const StyledBox = styled(Box)({
+
+
+const StyledBox = styled(Box)(({
   backgroundColor: 'rgba(28, 28, 44, 0.8)',
   color: '#fff',
   borderRadius: '15px',
@@ -28,9 +46,9 @@ const StyledBox = styled(Box)({
   boxShadow: '0px 4px 20px rgba(90, 90, 255, 0.2)',
   backdropFilter: 'blur(10px)',
   border: '1px solid rgba(150, 150, 255, 0.2)',
-});
+}));
 
-const StyledButton = styled(Button)({
+const StyledButton = styled(Button)(({
   backgroundColor: '#7e57c2',
   color: '#fff',
   boxShadow: '0 4px 12px rgba(126, 87, 194, 0.3)',
@@ -38,9 +56,9 @@ const StyledButton = styled(Button)({
     backgroundColor: '#5e35b1',
   },
   transition: 'all 0.3s ease',
-});
+}));
 
-const DreamCard = styled(Card)({
+const DreamCard = styled(Card)(({
   backgroundColor: 'rgba(40, 40, 80, 0.9)',
   color: '#fff',
   boxShadow: '0px 6px 16px rgba(80, 64, 170, 0.3)',
@@ -51,30 +69,30 @@ const DreamCard = styled(Card)({
   '&:hover': {
     transform: 'translateY(-5px)',
   }
-});
+}));
 
-const EmotionChip = styled(Chip)({
+const EmotionChip = styled(Chip)(({
   margin: '4px',
   backgroundColor: 'rgba(126, 87, 194, 0.2)',
   color: '#bb86fc',
   border: '1px solid #bb86fc',
-});
+}));
 
-const PersonChip = styled(Chip)({
+const PersonChip = styled(Chip)(({
   margin: '4px',
   backgroundColor: 'rgba(3, 218, 198, 0.2)',
   color: '#03dac6',
-  border: '1px solid #03dac6',
-});
+  border: '1px solid #03dac6'
+}));
 
-const PlaceChip = styled(Chip)({
+const PlaceChip = styled(Chip)(({
   margin: '4px',
   backgroundColor: 'rgba(255, 215, 64, 0.2)',
   color: '#ffd740',
   border: '1px solid #ffd740',
-});
+}));
 
-const StyledTextField = styled(TextField)({
+const StyledTextField = styled(TextField)(({
   '& .MuiOutlinedInput-root': {
     color: '#fff',
     '& fieldset': {
@@ -96,7 +114,7 @@ const StyledTextField = styled(TextField)({
   '& .MuiInputLabel-root.Mui-focused': {
     color: '#bb86fc',
   },
-});
+}));
 
 const StyledMarkdownContainer = styled(Box)(({ theme }) => ({
   '& h1, & h2, & h3, & h4, & h5, & h6': {
@@ -160,6 +178,12 @@ const App = () => {
   const [pendingRequests, setPendingRequests] = useState([]);
   const [patientUserIdToRequest, setPatientUserIdToRequest] = useState('');
   const [isGenZMode, setIsGenZMode] = useState(false);
+  const [chartData, setChartData] = useState([]); 
+  const [patientSummary, setPatientSummary] = useState([]); 
+  
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [selectedPatientHistory, setSelectedPatientHistory] = useState([]);
+  const [selectedPatientChartData, setSelectedPatientChartData] = useState([]);
 
   const settingsTabIndex = isCaregiver ? 3 : 2;
 
@@ -180,13 +204,17 @@ const App = () => {
     setTabValue(newValue);
     setError('');
     setSuccessMessage('');
+    setSelectedPatientId(null); 
+    setSelectedPatientHistory([]);
+    setSelectedPatientChartData([]);
+
     if (newValue === 1 && isLoggedIn) {
       console.log('Fetching dream history...');
       fetchDreamHistory(token);
     }
     if (newValue === 2 && isLoggedIn && isCaregiver) {
-      console.log('Fetching caregiver summary...');
-      fetchCaregiverSummary(token);
+      console.log('Fetching caregiver summary for dashboard...');
+      fetchCaregiverSummary(token); 
     }
     if (newValue === settingsTabIndex && isLoggedIn) {
       console.log('Fetching pending requests and user profile for settings tab...');
@@ -325,9 +353,21 @@ const App = () => {
       const response = await axios.get('http://127.0.0.1:5000/api/dream/history', {
         headers: { Authorization: `Bearer ${authToken}` }
       });
-      setDreamHistory(response.data);
+      const history = response.data;
+      setDreamHistory(history);
+
+      const formattedChartData = history.map(dream => ({
+        date: new Date(dream.created_at).toLocaleDateString('en-CA'),
+        Memory: dream.memory_score * 100,
+        Anxiety: dream.anxiety_score * 100,
+      })).sort((a, b) => new Date(a.date) - new Date(b.date)); 
+
+      setChartData(formattedChartData);
+
     } catch (error) {
       console.error('Failed to fetch dream history', error);
+      setDreamHistory([]);
+      setChartData([]); 
     }
   };
 
@@ -382,8 +422,8 @@ const App = () => {
     try {
       await axios.post('http://127.0.0.1:5000/api/caregiver/requests/respond',
         { request_id: requestId, action: action }, 
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+        { headers: { Authorization: `Bearer ${token}` }
+      });
       setSuccessMessage(`Request ${action}ed successfully.`);
       fetchPendingRequests(token);
       fetchUserProfile(token);
@@ -414,9 +454,53 @@ const App = () => {
     }
   };
 
+  const handleSelectPatient = (patientUserId) => {
+    setSelectedPatientId(patientUserId);
+    
+
+    const patientDreams = summaryData.filter(dream => dream.patient_user_id === patientUserId);
+    setSelectedPatientHistory(patientDreams);
+
+    if (patientDreams.length > 0) {
+      const formattedChartData = patientDreams.map(dream => ({
+        date: new Date(dream.date).toLocaleDateString('en-CA'), 
+        Memory: dream.memory_score * 100,
+        Anxiety: dream.anxiety_score * 100,
+      })).sort((a, b) => new Date(a.date) - new Date(b.date)); 
+      setSelectedPatientChartData(formattedChartData);
+    } else {
+      setSelectedPatientChartData([]);
+    }
+    console.log(`Selected patient: ${patientUserId}, Dreams found: ${patientDreams.length}`);
+  };
+
+  const handleBackToDashboard = () => {
+    setSelectedPatientId(null);
+    setSelectedPatientHistory([]);
+    setSelectedPatientChartData([]);
+  };
+
+  const handlePatientDreamsSummary = async (patientUserId) => {
+    setError('');
+    setSuccessMessage('');
+    console.log(`Fetching summary for patient: ${patientUserId}`);
+    try {
+      const response = await axios.post(`http://localhost:5000/api/patient_dreams/summary`, {'patient_user_id': patientUserId}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPatientSummary(response.data);
+      setSuccessMessage('Patient summary fetched successfully!');
+    } catch (error) {
+      setError('Failed to fetch patient summary.');
+      console.error("Patient summary error:", error.response?.data || error.message);
+    }
+  };
+
+
+
   return (
     <DreamBackground>
-      <AppBar position="static" style={{ backgroundColor: 'rgba(28, 28, 44, 0.9)', marginBottom: '20px' }}>
+      <AppBar position="sticky" style={{ backgroundColor: 'rgba(28, 28, 44, 0.9)', backdropFilter: 'blur(10px)', boxShadow: '0px 4px 20px rgba(90, 90, 255, 0.2)' }}>
         <Toolbar>
           <Nightlight style={{ marginRight: '10px' }} />
           <Typography variant="h6" style={{ flexGrow: 1 }}>
@@ -648,6 +732,43 @@ const App = () => {
               </Box>
             ) : (
               <Box>
+                <Typography variant="h5" sx={{ mb: 2, color: '#bb86fc' }}>Score Trends</Typography>
+                {chartData.length > 1 ? ( // Only show chart if there's more than one data point
+                  <Box sx={{ height: 300, mb: 4, background: 'rgba(40, 40, 80, 0.5)', p: 2, borderRadius: '8px' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={chartData}
+                        margin={{
+                          top: 5, right: 30, left: 0, bottom: 5,
+                        }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(150, 150, 255, 0.2)" />
+                        <XAxis 
+                          dataKey="date" 
+                          stroke="#aaa" 
+                          tick={{ fontSize: 12 }} 
+                          tickFormatter={(tick) => new Date(tick).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} 
+                        />
+                        <YAxis stroke="#aaa" domain={[0, 100]} tickFormatter={(tick) => `${tick}%`} tick={{ fontSize: 12 }} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: 'rgba(28, 28, 44, 0.9)', border: '1px solid rgba(150, 150, 255, 0.3)', borderRadius: '8px' }} 
+                          labelStyle={{ color: '#fff' }}
+                          itemStyle={{ color: '#fff' }}
+                          formatter={(value) => `${Math.round(value)}%`}
+                        />
+                        <Legend wrapperStyle={{ color: '#fff' }} />
+                        <Line type="monotone" dataKey="Memory" stroke="#03dac6" strokeWidth={2} activeDot={{ r: 8 }} dot={{ r: 4 }} />
+                        <Line type="monotone" dataKey="Anxiety" stroke="#cf6679" strokeWidth={2} activeDot={{ r: 8 }} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Box>
+                ) : (
+                  <Typography sx={{ textAlign: 'center', opacity: 0.7, my: 3 }}>
+                    Record more dreams to see score trends over time.
+                  </Typography>
+                )}
+
+                <Typography variant="h5" sx={{ mb: 2, mt: 4, color: '#bb86fc' }}>Dream Entries</Typography>
                 {dreamHistory.map((dream, index) => (
                   <DreamCard key={index}>
                     <CardContent>
@@ -708,52 +829,129 @@ const App = () => {
         )}
 
         {tabValue === 2 && isCaregiver && (
-          <StyledBox>
-            <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', textShadow: '0 0 10px rgba(150, 150, 255, 0.5)' }}>
-              Caregiver Dashboard
-            </Typography>
-            <Typography variant="body1" paragraph sx={{ opacity: 0.8, mb: 4 }}>
-              Recent dream entries from users you care for.
-            </Typography>
-            
-            {summaryData.length === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 5 }}>
-                <Typography variant="h6">No recent dream data available for the users you care for.</Typography>
-              </Box>
-            ) : (
-              <Grid container spacing={2}>
-                {summaryData.map((item, index) => (
-                  <Grid item xs={12} sm={6} md={4} key={index}>
-                    <DreamCard>
-                      <CardContent>
-                        <Typography variant="subtitle2" color="#bb86fc" gutterBottom>
-                          {item.date}
-                        </Typography>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-                          Patient: {item.patient_user_id}
-                        </Typography>
-                        <Typography variant="body2" sx={{ opacity: 0.9, mb: 2, maxHeight: 100, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          Summary: {item.dream_summary}
-                        </Typography>
-                         <Grid container spacing={1}>
-                           <Grid item xs={6}>
-                              <Typography variant="caption" color="#03dac6">Memory</Typography>
-                              <LinearProgress variant="determinate" value={item.memory_score * 100} sx={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(3, 218, 198, 0.2)', '& .MuiLinearProgress-bar': { backgroundColor: '#03dac6' } }} />
-                              <Typography variant="caption" align="right" display="block">{Math.round(item.memory_score * 100)}%</Typography>
+           <StyledBox>
+             {!selectedPatientId ? (
+               <>
+                 <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', textShadow: '0 0 10px rgba(150, 150, 255, 0.5)' }}>
+                   Caregiver Dashboard
+                 </Typography>
+                 <Typography variant="body1" paragraph sx={{ opacity: 0.8, mb: 4 }}>
+                   Select a patient to view their recent dream analysis and score trends.
+                 </Typography>
+                 
+                 {caredForUsers.length === 0 ? (
+                   <Typography sx={{ textAlign: 'center', opacity: 0.7, mt: 3 }}>
+                     You are not currently caring for any users. Use the Settings tab to request access.
+                   </Typography>
+                 ) : (
+                   <Grid container spacing={3}>
+                     {caredForUsers.map((patient) => (
+                       <Grid item xs={12} sm={6} md={4} key={patient.id}>
+                         <DreamCard 
+                           onClick={() => handleSelectPatient(patient.user_id)} 
+                           sx={{ cursor: 'pointer', textAlign: 'center' }}
+                         >
+                           <CardContent>
+                             <Avatar sx={{ bgcolor: '#7e57c2', margin: 'auto', mb: 2 }}>
+                               {patient.user_id.charAt(0).toUpperCase()}
+                             </Avatar>
+                             <Typography variant="h6">{patient.user_id}</Typography>
+                             <Typography variant="body2" sx={{ opacity: 0.7 }}>Click to view details</Typography>
+                           </CardContent>
+                         </DreamCard>
+                       </Grid>
+                     ))}
+                   </Grid>
+                 )}
+               </>
+             ) : (
+               <>
+                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                   <IconButton onClick={handleBackToDashboard} sx={{ mr: 1, color: '#bb86fc' }}>
+                     <ArrowBack />
+                   </IconButton>
+                   <Typography variant="h4" sx={{ fontWeight: 'bold', textShadow: '0 0 10px rgba(150, 150, 255, 0.5)' }}>
+                     Patient: {selectedPatientId}
+                   </Typography>
+                 </Box>
+                  <StyledButton
+
+                    variant="outlined"
+                    onClick={() => handlePatientDreamsSummary(selectedPatientId)}
+                    sx={{ mb: 2, borderColor: '#7e57c2', color: '#bb86fc' }}
+                  >
+                    Fetch Patient Summary
+                  </StyledButton>
+                  {patientSummary.patterns ? (
+                    <Box sx={{ mb: 4 }}>
+                      <Typography variant="h5" sx={{ mb: 2, color: '#bb86fc' }}>Patient Summary</Typography>
+                      <StyledMarkdownContainer>
+                        <ReactMarkdown>
+                          {patientSummary.patterns.replace(/\|\s*-+\s*\|/g, '')}
+                        </ReactMarkdown>
+                      </StyledMarkdownContainer>
+                    </Box>
+                  ) : (
+                    <Typography sx={{ textAlign: 'center', opacity: 0.7, my: 3 }}>
+                      No summary data available for this patient.
+                    </Typography>
+                  )}
+
+                 <Typography variant="h5" sx={{ mb: 2, color: '#bb86fc' }}>Score Trends</Typography>
+                 {selectedPatientChartData.length > 1 ? (
+                   <Box sx={{ height: 300, mb: 4, background: 'rgba(40, 40, 80, 0.5)', p: 2, borderRadius: '8px' }}>
+                     <ResponsiveContainer width="100%" height="100%">
+                       <LineChart data={selectedPatientChartData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(150, 150, 255, 0.2)" />
+                         <XAxis dataKey="date" stroke="#aaa" tick={{ fontSize: 12 }} tickFormatter={(tick) => new Date(tick).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} />
+                         <YAxis stroke="#aaa" domain={[0, 100]} tickFormatter={(tick) => `${tick}%`} tick={{ fontSize: 12 }} />
+                         <Tooltip contentStyle={{ backgroundColor: 'rgba(28, 28, 44, 0.9)', border: '1px solid rgba(150, 150, 255, 0.3)', borderRadius: '8px' }} labelStyle={{ color: '#fff' }} itemStyle={{ color: '#fff' }} formatter={(value) => `${Math.round(value)}%`} />
+                         <Legend wrapperStyle={{ color: '#fff' }} />
+                         <Line type="monotone" dataKey="Memory" stroke="#03dac6" strokeWidth={2} activeDot={{ r: 8 }} dot={{ r: 4 }} />
+                         <Line type="monotone" dataKey="Anxiety" stroke="#cf6679" strokeWidth={2} activeDot={{ r: 8 }} dot={{ r: 4 }} />
+                       </LineChart>
+                     </ResponsiveContainer>
+                   </Box>
+                 ) : (
+                   <Typography sx={{ textAlign: 'center', opacity: 0.7, my: 3 }}>
+                     Not enough recent dream data to display trends for this patient.
+                   </Typography>
+                 )}
+
+                 <Typography variant="h5" sx={{ mb: 2, mt: 4, color: '#bb86fc' }}>Recent Dream Entries</Typography>
+                 {selectedPatientHistory.length === 0 ? (
+                   <Typography sx={{ textAlign: 'center', opacity: 0.7, my: 3 }}>
+                     No recent dream entries found for this patient in the summary data.
+                   </Typography>
+                 ) : (
+                   selectedPatientHistory.map((dream, index) => (
+                     <DreamCard key={index}>
+                       <CardContent>
+                         <Typography variant="subtitle2" color="#bb86fc" gutterBottom>
+                           {new Date(dream.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                         </Typography>
+                         <StyledMarkdownContainer>
+                           <ReactMarkdown>
+                             {dream.dream_summary || 'No summary available.'}
+                           </ReactMarkdown>
+                         </StyledMarkdownContainer>
+                         <Grid container spacing={2} sx={{ mt: 2 }}> 
+                           <Grid item xs={12} sm={6}>
+                             <Typography variant="subtitle2" color="#03dac6">Memory Score: {Math.round(dream.memory_score * 100)}%</Typography>
+                             <LinearProgress variant="determinate" value={dream.memory_score * 100} sx={{ height: 6, borderRadius: 3, mb: 2, backgroundColor: 'rgba(3, 218, 198, 0.2)', '& .MuiLinearProgress-bar': { backgroundColor: '#03dac6' } }} />
                            </Grid>
-                           <Grid item xs={6}>
-                              <Typography variant="caption" color="#cf6679">Anxiety</Typography>
-                              <LinearProgress variant="determinate" value={item.anxiety_score * 100} sx={{ height: 6, borderRadius: 3, backgroundColor: 'rgba(207, 102, 121, 0.2)', '& .MuiLinearProgress-bar': { backgroundColor: '#cf6679' } }} />
-                              <Typography variant="caption" align="right" display="block">{Math.round(item.anxiety_score * 100)}%</Typography>
+                           <Grid item xs={12} sm={6}>
+                             <Typography variant="subtitle2" color="#cf6679">Anxiety Score: {Math.round(dream.anxiety_score * 100)}%</Typography>
+                             <LinearProgress variant="determinate" value={dream.anxiety_score * 100} sx={{ height: 6, borderRadius: 3, mb: 2, backgroundColor: 'rgba(207, 102, 121, 0.2)', '& .MuiLinearProgress-bar': { backgroundColor: '#cf6679' } }} />
                            </Grid>
                          </Grid>
-                      </CardContent>
-                    </DreamCard>
-                  </Grid>
-                ))}
-              </Grid>
-            )}
-          </StyledBox>
+                       </CardContent>
+                     </DreamCard>
+                   ))
+                 )}
+               </>
+             )}
+           </StyledBox>
         )}
 
         {tabValue === settingsTabIndex && isLoggedIn && (
@@ -861,6 +1059,7 @@ const App = () => {
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
             InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }}
+            sx={{ input: { color: 'black' } }}
           />
           <StyledTextField
             margin="dense"
@@ -871,6 +1070,7 @@ const App = () => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }}
+            sx={{ input: { color: 'black' } }}
           />
            {error && <Typography color="error" align="center" sx={{ mt: 2 }}>{error}</Typography>}
         </DialogContent>
@@ -893,6 +1093,7 @@ const App = () => {
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
             InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }}
+            sx={{ input: { color: 'black' } }}
           />
           <StyledTextField
             margin="dense"
@@ -903,6 +1104,7 @@ const App = () => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             InputLabelProps={{ style: { color: 'rgba(0, 0, 0, 0.6)' } }}
+            sx={{ input: { color: 'black' } }}
           />
           {error && <Typography color="error" align="center" sx={{ mt: 2 }}>{error}</Typography>}
         </DialogContent>
