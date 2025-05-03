@@ -1,5 +1,7 @@
-Flask
-Flask-Cors
-Flask-SQLAlchemy
-PyJWT
-requests
+Flask==2.3.2
+Flask-SQLAlchemy==3.0.5
+Flask-CORS==3.0.10
+requests==2.31.0
+PyJWT==2.8.0
+fpdf==1.7.2
+Werkzeug==2.3.2
