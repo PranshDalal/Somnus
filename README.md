@@ -15,7 +15,7 @@ Somnus is a web application designed to analyze dreams and provide insights into
  - **Patient Summary** - Caregivers can generate a clinical summary of a patient's recent dream patterns, including repetitive themes, emotions, and cognitive health indicators
 
 ### Additional Features
- - **Gen Z Mode** - Analyze dreams with fun Gen Z sland
+ - **Gen Z Mode** - Analyze dreams with fun Gen Z slang
  - **Authentication** - User authentication with JWT tokens
 
 ## Technologies Used
