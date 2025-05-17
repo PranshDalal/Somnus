@@ -268,7 +268,13 @@ def analyze_dream(current_user):
             return jsonify({'error': 'Dream text is required'}), 400
 
         print(f"Analyzing dream for user {current_user.user_id} (Gen Z Mode: {is_gen_z_mode}): {dream_text[:50]}...")
-        analysis_prompt = f"Analyze the following dream with a focus on potential indicators of mental well-being, cognitive function, and emotional state. Assess the dream's themes, sentiment, and any elements that might relate to memory recall or anxiety levels. Provide a thoughtful analysis of these aspects. Also, provide a numerical 'Memory Score' and an 'Anxiety Score' on a scale of 0 to 10, reflecting your assessment based *only* on the dream's content. Dream text: {dream_text}"
+        analysis_prompt = f"""Analyze the following dream with a focus on potential indicators of mental well-being, cognitive function, and emotional state. Assess the dream's themes, sentiment, and any elements that might relate to memory recall or anxiety levels. Provide a thoughtful analysis of these aspects.
+
+After your analysis, ALWAYS output the following two lines at the end, in this exact format (replace X and Y with your scores):
+Memory Score: X/10
+Anxiety Score: Y/10
+
+Dream text: {dream_text}"""
 
         raw_analysis_content = call_sonar(analysis_prompt, is_gen_z_mode=is_gen_z_mode)
 
